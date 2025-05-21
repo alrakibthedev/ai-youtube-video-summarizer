@@ -60,7 +60,7 @@ def count_tokens(text):
     encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
     return len(encoding.encode(text))
 
-def generate_summary(text, max_tokens=3000):
+async def generate_summary(text, max_tokens=3000):
     """Generate summary using GPT-3.5 with token limit handling"""
     try:
         if count_tokens(text) > max_tokens:
