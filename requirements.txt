@@ -1,6 +1,5 @@
-streamlit==1.23.1
-youtube-transcript-api==0.6.2
-pytube==15.0.0
-librosa==0.10.1
-torch==2.0.1
-transformers==4.33.3
+streamlit
+youtube-transcript-api
+transformers
+torch
+sentencepiece

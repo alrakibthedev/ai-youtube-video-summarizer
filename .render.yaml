@@ -1,7 +1,0 @@
-services:
-  - type: web
-    name: youtube-summarizer
-    env: python
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
-    startCommand: streamlit run app.py --server.port
-    plan: free
