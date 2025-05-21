@@ -1,98 +1,92 @@
 import streamlit as st
 import yt_dlp
-from pathlib import Path
 import os
+from pathlib import Path
+import tempfile
 from transformers import pipeline
 from faster_whisper import WhisperModel
 
-# Load models once (cached for performance)
+# Summarizer pipeline (lightweight)
 @st.cache_resource
-def load_models():
-    summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
-    whisper_model = WhisperModel("base", compute_type="int8")  # Use 'int8' for low-RAM environments
-    return summarizer, whisper_model
+def load_summarizer():
+    return pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
 
-summarizer, whisper_model = load_models()
+# Whisper model (faster, CPU-only)
+@st.cache_resource
+def load_whisper():
+    return WhisperModel("base", compute_type="int8")
 
+# Download audio from YouTube
 def download_audio(url):
-    output_dir = "temp_audio"
-    output_path = f"{output_dir}/audio.wav"
-    os.makedirs(output_dir, exist_ok=True)
-
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'outtmpl': f'{output_dir}/audio.%(ext)s',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'wav',
-        }],
-        'quiet': True,
-    }
-
     try:
+        temp_dir = tempfile.mkdtemp()
+        output_path = os.path.join(temp_dir, "%(title)s.%(ext)s")
+
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': output_path,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'quiet': True,
+        }
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-        return output_path
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            mp3_path = Path(filename).with_suffix(".mp3")
+            return mp3_path
     except Exception as e:
         st.error(f"Download error: {e}")
         return None
 
-def transcribe_audio(path):
-    try:
-        segments, _ = whisper_model.transcribe(path)
-        transcript = " ".join([segment.text for segment in segments])
-        return transcript
-    except Exception as e:
-        st.error(f"Transcription error: {e}")
-        return None
+# Transcribe using faster-whisper
+def transcribe_audio(audio_path):
+    model = load_whisper()
+    segments, _ = model.transcribe(str(audio_path), beam_size=5)
+    transcript = " ".join([segment.text for segment in segments])
+    return transcript
 
-def summarize(text):
-    try:
-        # Hugging Face models have input token limits, so truncate large texts
-        if len(text) > 4000:
-            text = text[:4000]
-        summary = summarizer(text, max_length=250, min_length=50, do_sample=False)
-        return summary[0]['summary_text']
-    except Exception as e:
-        st.error(f"Summarization error: {e}")
-        return None
+# Summarize transcript
+def summarize_text(text):
+    summarizer = load_summarizer()
+    if len(text) < 400:
+        return "Text too short to summarize."
+    return summarizer(text, max_length=300, min_length=60, do_sample=False)[0]["summary_text"]
 
-# UI
-st.set_page_config(page_title="🎥 Free YouTube Summarizer", layout="wide")
-st.title("🎬 Free AI-Powered YouTube Summarizer (No API Required)")
+# Streamlit UI
+st.set_page_config(page_title="Free YouTube Summarizer", layout="wide")
+st.title("🎥 Free YouTube Video Summarizer (No API Keys)")
 
-url = st.text_input("Enter a YouTube URL:", placeholder="https://www.youtube.com/watch?v=...")
+url = st.text_input("Enter YouTube video URL:")
 
-if st.button("Generate Summary"):
-    if url:
-        with st.spinner("Downloading and processing video..."):
-            audio_file = download_audio(url)
-
-            if audio_file and Path(audio_file).exists():
-                transcript = transcribe_audio(audio_file)
-                os.remove(audio_file)
-
-                if transcript:
-                    st.subheader("📝 Transcript")
-                    st.expander("View Transcript").write(transcript)
-
-                    st.subheader("📌 Summary")
-                    summary = summarize(transcript)
-                    if summary:
-                        st.write(summary)
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.download_button("Download Summary", summary, file_name="summary.txt")
-                        with col2:
-                            st.download_button("Download Transcript", transcript, file_name="transcript.txt")
-                    else:
-                        st.error("Summarization failed.")
-                else:
-                    st.error("Transcription failed.")
-            else:
-                st.error("Download failed. Try another video.")
-    else:
+if st.button("Summarize Video"):
+    if not url:
         st.warning("Please enter a valid YouTube URL.")
+    else:
+        with st.spinner("Downloading audio..."):
+            audio_path = download_audio(url)
+
+        if audio_path and audio_path.exists():
+            with st.spinner("Transcribing audio..."):
+                transcript = transcribe_audio(audio_path)
+
+            st.subheader("📝 Full Transcript")
+            st.expander("Click to view transcript").write(transcript)
+
+            with st.spinner("Summarizing transcript..."):
+                summary = summarize_text(transcript)
+
+            st.subheader("📌 Summary")
+            st.write(summary)
+
+            # Downloads
+            st.download_button("Download Transcript", transcript, file_name="transcript.txt")
+            st.download_button("Download Summary", summary, file_name="summary.txt")
+        else:
+            st.error("Failed to process video.")
 
 st.markdown("---")
-st.markdown("🔓 Built with `yt-dlp`, `faster-whisper`, `transformers`, and ❤️ by the open source community.")
+st.markdown("Built with ❤️ using Streamlit, Whisper, and Hugging Face.")
