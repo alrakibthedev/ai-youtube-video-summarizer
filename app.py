@@ -1,124 +1,97 @@
 import streamlit as st
-import openai
 import yt_dlp
-import os
 from pathlib import Path
-import tiktoken
+import os
+from transformers import pipeline
+from faster_whisper import WhisperModel
 
-# Set up OpenAI client using the new SDK
-from openai import OpenAI
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+# Load models only once
+@st.cache_resource
+def load_models():
+    summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+    whisper_model = WhisperModel("base", compute_type="int8")
+    return summarizer, whisper_model
 
-# Configure paths for FFmpeg and FFprobe
-FFMPEG_PATH = 'ffmpeg/ffmpeg'
-FFPROBE_PATH = 'ffmpeg/ffprobe'
+summarizer, whisper_model = load_models()
 
+# Download audio using yt-dlp
 def download_audio(url):
-    """Download audio using yt-dlp with FFmpeg/FFprobe for Streamlit Cloud"""
-    if not Path(FFMPEG_PATH).exists() or not Path(FFPROBE_PATH).exists():
-        st.error("FFmpeg or FFprobe not found. Please upload them to 'ffmpeg/' directory.")
-        return None
-
+    output_path = "temp_audio/audio.wav"
     ydl_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': 'temp_audio/%(title)s.%(ext)s',
+        'outtmpl': 'temp_audio/audio.%(ext)s',
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
+            'preferredcodec': 'wav',
         }],
-        'ffmpeg_location': FFMPEG_PATH,
-        'ffprobe_location': FFPROBE_PATH,
-        'quiet': True
+        'quiet': True,
     }
 
     try:
+        os.makedirs("temp_audio", exist_ok=True)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            return Path(ydl.prepare_filename(info)).with_suffix('.mp3')
+            ydl.download([url])
+        return output_path
     except Exception as e:
         st.error(f"Download error: {e}")
         return None
 
-def transcribe_audio(file_path):
-    """Transcribe MP3 audio using OpenAI Whisper (v1 SDK)"""
+# Transcribe audio using faster-whisper
+def transcribe_audio(path):
     try:
-        with open(file_path, "rb") as audio_file:
-            transcript_response = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_file,
-                response_format="text"
-            )
-        return transcript_response
+        segments, _ = whisper_model.transcribe(path)
+        transcript = " ".join([segment.text for segment in segments])
+        return transcript
     except Exception as e:
         st.error(f"Transcription error: {e}")
         return None
 
-def count_tokens(text):
-    """Estimate token count for GPT-3.5 input handling"""
-    encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
-    return len(encoding.encode(text))
-
-def generate_summary(text, max_tokens=3000):
-    """Summarize transcript using GPT-3.5 via ChatCompletion"""
+# Summarize text
+def summarize(text):
     try:
-        if count_tokens(text) > max_tokens:
-            # Truncate by characters (approximate, since 1 token ≈ 4 chars)
-            text = text[:int(max_tokens * 4)]
-
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that summarizes YouTube video transcripts."},
-                {"role": "user", "content": f"Create a detailed summary with key points in bullet format:\n\n{text}"}
-            ],
-            temperature=0.3,
-            max_tokens=500
-        )
-        return response.choices[0].message.content.strip()
+        if len(text) > 4000:
+            text = text[:4000]  # limit input size
+        summary = summarizer(text, max_length=250, min_length=50, do_sample=False)
+        return summary[0]['summary_text']
     except Exception as e:
         st.error(f"Summarization error: {e}")
         return None
 
-# ---------------------- Streamlit UI ------------------------
+# UI
+st.set_page_config(page_title="Free YouTube Summarizer", layout="wide")
+st.title("📼 Free AI-Powered YouTube Summarizer")
 
-st.set_page_config(page_title="YouTube Video Summarizer", layout="wide")
-st.title("🎥 AI-Powered YouTube Video Summarizer")
-
-url = st.text_input("Enter YouTube Video URL:", placeholder="https://youtube.com/...")
-
+url = st.text_input("Enter a YouTube URL:", placeholder="https://www.youtube.com/watch?v=...")
 if st.button("Generate Summary"):
     if url:
-        with st.spinner("Processing video..."):
-            audio_path = download_audio(url)
-            
-            if audio_path and audio_path.exists():
-                transcript = transcribe_audio(audio_path)
-                os.remove(audio_path)  # Clean up after processing
-                
+        with st.spinner("Downloading and processing..."):
+            audio_file = download_audio(url)
+
+            if audio_file and Path(audio_file).exists():
+                transcript = transcribe_audio(audio_file)
+                os.remove(audio_file)
+
                 if transcript:
-                    st.subheader("📝 Full Transcript")
+                    st.subheader("📝 Transcript")
                     st.expander("View Transcript").write(transcript)
-                    
-                    st.subheader("📌 AI-Generated Summary")
-                    summary = generate_summary(transcript)
+
+                    st.subheader("📌 Summary")
+                    summary = summarize(transcript)
                     if summary:
                         st.write(summary)
-
-                        # Download buttons
                         col1, col2 = st.columns(2)
                         with col1:
                             st.download_button("Download Summary", summary, file_name="summary.txt")
                         with col2:
                             st.download_button("Download Transcript", transcript, file_name="transcript.txt")
                     else:
-                        st.error("Summary generation failed.")
+                        st.error("Summarization failed.")
                 else:
-                    st.error("Transcription failed. Try a different video.")
+                    st.error("Transcription failed.")
             else:
-                st.error("Audio download failed. Check the video URL.")
+                st.error("Download failed. Try a different URL.")
     else:
         st.warning("Please enter a valid YouTube URL.")
 
 st.markdown("---")
-st.markdown("Built with ❤️ using OpenAI, Streamlit, and Python")
+st.markdown("💡 100% free and API-less using `faster-whisper` + `Hugging Face`")

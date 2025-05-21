@@ -1,6 +1,11 @@
-streamlit>=1.22.0
-openai>=1.3.7
-tiktoken>=0.4.0
-yt-dlp>=2023.7.6
-ffmpeg-python>=0.2.0
-python-dotenv>=1.0.0
+openai
+tiktoken
+ffmpeg-python
+python-dotenv
+streamlit
+yt-dlp
+transformers
+torch
+sentencepiece
+faster-whisper
+
