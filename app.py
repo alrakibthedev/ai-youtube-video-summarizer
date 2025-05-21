@@ -2,18 +2,24 @@ import streamlit as st
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 from transformers import pipeline
 import re
-import torch # Required by transformers, ensure it's installed
+import torch
+from fp.fp import FreeProxy  # Install with: pip install fp
+import random
 
-# --- Configuration & Model Loading ---
+def get_random_free_proxy():
+    """WARNING: Highly unreliable and potentially risky"""
+    try:
+        proxy = FreeProxy(rand=True, anonym=True, timeout=1).get()
+        return {
+            'http': proxy,
+            'https': proxy
+        }
+    except:
+        return None
 
-# Cache the summarization pipeline for efficiency
 @st.cache_resource
 def load_summarizer():
     """Loads the Hugging Face summarization pipeline."""
-    # Using a distilled BART model for a balance of speed and quality
-    # device=0 for GPU if available, device=-1 for CPU.
-    # Let transformers pipeline auto-detect or default to CPU if GPU not configured/available.
-    # For Streamlit sharing, CPU is more common for free tier.
     try:
         summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6", device=-1)
 
@@ -23,8 +29,6 @@ def load_summarizer():
     return summarizer
 
 summarizer_pipeline = load_summarizer()
-
-# --- Helper Functions ---
 
 def extract_video_id(youtube_url):
     """
@@ -45,20 +49,23 @@ def extract_video_id(youtube_url):
     return None
 
 def get_video_transcript(video_id):
-    """
-    Fetches the transcript for a given YouTube video ID.
-    Returns the transcript text or an error message string.
-    """
     try:
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
-        full_transcript = " ".join([item['text'] for item in transcript_list])
-        return full_transcript
-    except TranscriptsDisabled:
-        return "Error: Transcripts are disabled for this video."
-    except NoTranscriptFound:
-        return "Error: No transcript found for this video. It might be that the video has no subtitles or they are not available in a processable format."
+        # Attempt with 3 different random proxies
+        for _ in range(3):
+            proxies = get_random_free_proxy()
+            if not proxies:
+                continue
+                
+            transcript_list = YouTubeTranscriptApi.get_transcript(
+                video_id,
+                proxies=proxies,
+                timeout=10
+            )
+            return " ".join([item['text'] for item in transcript_list])
+            
+        return "Error: All proxy attempts failed"
     except Exception as e:
-        return f"Error fetching transcript: {str(e)}"
+        return f"Proxy error: {str(e)}"
 
 def chunk_text_by_sentences(text, max_chars_per_chunk=2800):
     """
