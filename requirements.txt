@@ -1,6 +1,6 @@
-streamlit
+streamlit>=1.20.0
 yt-dlp
-torch
+torch>=2.0.0
 transformers
 sentencepiece
 faster-whisper
