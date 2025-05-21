@@ -10,12 +10,12 @@ import ffmpeg
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
 def download_audio(url):
-    """Download audio from YouTube using yt-dlp with local FFmpeg and FFprobe binaries for Streamlit Cloud"""
-    ffmpeg_path = str(Path("bin/ffmpeg").resolve())
-    ffprobe_path = str(Path("bin/ffprobe").resolve())
+    """Download audio from YouTube using yt-dlp with FFmpeg and FFprobe path specification"""
+    ffmpeg_path = 'ffmpeg/ffmpeg'
+    ffprobe_path = 'ffmpeg/ffprobe'
 
     if not Path(ffmpeg_path).exists() or not Path(ffprobe_path).exists():
-        st.error("FFmpeg or FFprobe not found. Please ensure they are uploaded correctly.")
+        st.error("FFmpeg or FFprobe not found at the specified path. Please ensure they are installed.")
         return None
 
     ydl_opts = {
@@ -27,7 +27,7 @@ def download_audio(url):
             'preferredquality': '192',
         }],
         'ffmpeg_location': ffmpeg_path,
-        'ffprobe_location': ffprobe_path,
+        'ffprobe_location': ffprobe_path,  # Add this line
         'quiet': True
     }
 
@@ -38,6 +38,7 @@ def download_audio(url):
     except Exception as e:
         st.error(f"Download error: {e}")
         return None
+
 
 
 
