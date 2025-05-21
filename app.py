@@ -5,21 +5,23 @@ import os
 from transformers import pipeline
 from faster_whisper import WhisperModel
 
-# Load models only once
+# Load models once (cached for performance)
 @st.cache_resource
 def load_models():
     summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
-    whisper_model = WhisperModel("base", compute_type="int8")
+    whisper_model = WhisperModel("base", compute_type="int8")  # Use 'int8' for low-RAM environments
     return summarizer, whisper_model
 
 summarizer, whisper_model = load_models()
 
-# Download audio using yt-dlp
 def download_audio(url):
-    output_path = "temp_audio/audio.wav"
+    output_dir = "temp_audio"
+    output_path = f"{output_dir}/audio.wav"
+    os.makedirs(output_dir, exist_ok=True)
+
     ydl_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': 'temp_audio/audio.%(ext)s',
+        'outtmpl': f'{output_dir}/audio.%(ext)s',
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'wav',
@@ -28,7 +30,6 @@ def download_audio(url):
     }
 
     try:
-        os.makedirs("temp_audio", exist_ok=True)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
         return output_path
@@ -36,7 +37,6 @@ def download_audio(url):
         st.error(f"Download error: {e}")
         return None
 
-# Transcribe audio using faster-whisper
 def transcribe_audio(path):
     try:
         segments, _ = whisper_model.transcribe(path)
@@ -46,11 +46,11 @@ def transcribe_audio(path):
         st.error(f"Transcription error: {e}")
         return None
 
-# Summarize text
 def summarize(text):
     try:
+        # Hugging Face models have input token limits, so truncate large texts
         if len(text) > 4000:
-            text = text[:4000]  # limit input size
+            text = text[:4000]
         summary = summarizer(text, max_length=250, min_length=50, do_sample=False)
         return summary[0]['summary_text']
     except Exception as e:
@@ -58,13 +58,14 @@ def summarize(text):
         return None
 
 # UI
-st.set_page_config(page_title="Free YouTube Summarizer", layout="wide")
-st.title("📼 Free AI-Powered YouTube Summarizer")
+st.set_page_config(page_title="🎥 Free YouTube Summarizer", layout="wide")
+st.title("🎬 Free AI-Powered YouTube Summarizer (No API Required)")
 
 url = st.text_input("Enter a YouTube URL:", placeholder="https://www.youtube.com/watch?v=...")
+
 if st.button("Generate Summary"):
     if url:
-        with st.spinner("Downloading and processing..."):
+        with st.spinner("Downloading and processing video..."):
             audio_file = download_audio(url)
 
             if audio_file and Path(audio_file).exists():
@@ -89,9 +90,9 @@ if st.button("Generate Summary"):
                 else:
                     st.error("Transcription failed.")
             else:
-                st.error("Download failed. Try a different URL.")
+                st.error("Download failed. Try another video.")
     else:
         st.warning("Please enter a valid YouTube URL.")
 
 st.markdown("---")
-st.markdown("💡 100% free and API-less using `faster-whisper` + `Hugging Face`")
+st.markdown("🔓 Built with `yt-dlp`, `faster-whisper`, `transformers`, and ❤️ by the open source community.")
