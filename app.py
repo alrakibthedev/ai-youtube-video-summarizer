@@ -15,7 +15,8 @@ def load_summarizer():
     # Let transformers pipeline auto-detect or default to CPU if GPU not configured/available.
     # For Streamlit sharing, CPU is more common for free tier.
     try:
-        summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
+        summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6", device=-1)
+
     except Exception as e:
         st.error(f"Error loading summarization model: {e}. Make sure you have an internet connection for the first download.")
         summarizer = None

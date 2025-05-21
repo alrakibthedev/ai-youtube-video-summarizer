@@ -1,5 +1,4 @@
-streamlit
-youtube-transcript-api
-transformers
-torch
-sentencepiece
+streamlit>=1.19.0
+youtube-transcript-api>=0.6.0
+transformers>=4.30.0
+torch>=2.0.1
