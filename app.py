@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import tiktoken
 import ffmpeg
+from openai import AsyncOpenAI
 
 # Set up OpenAI API
 openai.api_key = st.secrets["OPENAI_API_KEY"]
@@ -64,16 +65,11 @@ def generate_summary(text, max_tokens=3000):
     try:
         if count_tokens(text) > max_tokens:
             text = text[:int(max_tokens * 3.5)]  # Approximate character limit
-        
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
+            client = AsyncOpenAI()
+            response = await client.chat.completions.create(model="gpt-3.5-turbo", messages=[
                 {"role": "system", "content": "You are a helpful assistant that summarizes video transcripts."},
-                {"role": "user", "content": f"Create a detailed summary with key points in bullet format:\n\n{text}"}
-            ],
-            temperature=0.3,
-            max_tokens=500
-        )
+                {"role": "user", "content": "Create a detailed summary with key points in bullet format:\n\n{text}"}
+            ],)
         return response.choices[0].message['content']
     except Exception as e:
         st.error(f"Summarization error: {e}")
