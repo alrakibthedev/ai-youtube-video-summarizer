@@ -46,9 +46,9 @@ def transcribe_audio(file_path):
     """Transcribe audio using OpenAI Whisper"""
     try:
         with open(file_path, "rb") as audio_file:
-            transcript = openai.audio.transcriptions.create("whisper-1",
-                audio_file,
-                response_format="text")
+            transcript = openai.audio.transcriptions.create(
+                audio_file
+            )
         return transcript
     except Exception as e:
         st.error(f"Transcription error: {e}")
