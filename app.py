@@ -8,7 +8,7 @@ from faster_whisper import WhisperModel
 # Load models once (cached for performance)
 @st.cache_resource
 def load_models():
-    summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+    summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
     whisper_model = WhisperModel("base", compute_type="int8")  # Use 'int8' for low-RAM environments
     return summarizer, whisper_model
 
